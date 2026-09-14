@@ -7,4 +7,6 @@ class ProjectState(TypedDict, total=False):
 
     requirements: Optional[Dict[str, Any]]
 
+    tasks: Optional[Dict[str, Any]]
+
     status: Literal["in_progress", "needs_fix", "escalated", "done"]
