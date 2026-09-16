@@ -1,4 +1,4 @@
-import json
+from utils import parse_llm_json
 from config import get_llm
 from prompts import BACKEND_SYSTEM_PROMPT
 
@@ -14,14 +14,4 @@ def run_backend(task: str) -> dict:
 
     raw = response.content.strip()
 
-    if raw.startswith("```"):
-        raw = raw.strip("`")
-        if raw.lower().startswith("json"):
-            raw = raw[4:].strip()
-
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError as e:
-        raise ValueError(
-            f"Backend Agent did not return valid JSON.\nRaw output:\n{raw}"
-        ) from e
+    return parse_llm_json(raw, "Backend Agent")

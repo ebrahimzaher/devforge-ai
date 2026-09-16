@@ -1,4 +1,4 @@
-import json
+from utils import parse_llm_json
 from config import get_llm
 from prompts import FRONTEND_SYSTEM_PROMPT
 
@@ -14,14 +14,4 @@ def run_frontend(task: str) -> dict:
 
     raw = response.content.strip()
 
-    if raw.startswith("```"):
-        raw = raw.strip("`")
-        if raw.lower().startswith("json"):
-            raw = raw[4:].strip()
-
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError as e:
-        raise ValueError(
-            f"Frontend Agent did not return valid JSON.\nRaw output:\n{raw}"
-        ) from e
+    return parse_llm_json(raw, "Frontend Agent")
