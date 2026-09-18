@@ -17,4 +17,10 @@ class ProjectState(TypedDict, total=False):
 
     generated_code: Annotated[Dict[str, Any], merge_dicts]
 
+    qa_report: Optional[Dict[str, Any]]
+
+    retry_count: Optional[Dict[str, int]]
+    
+    escalation_reason: Optional[str]
+
     status: Annotated[Literal["in_progress", "needs_fix", "escalated", "done"], keep_last]

@@ -5,7 +5,7 @@ from langchain_ollama import ChatOllama
 load_dotenv()
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:3b-instruct")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b")
 
 MODELS = {
     "fast": OLLAMA_MODEL,
@@ -15,19 +15,27 @@ MODELS = {
 
 MAX_TOKENS = {
     "fast": 512,
-    "reasoning": 768,
-    "code": 1500,
+    "reasoning": 1500,
+    "code": 4096,
+}
+
+REPEAT_PENALTY = {
+    "fast": 1.1,
+    "reasoning": 1.1,
+    "code": 1.0,   # disabled — JSON structure triggers false repeat detection
 }
 
 
 def get_llm(kind: str = "reasoning", temperature: float = 0.3):
     model_name = MODELS.get(kind, MODELS["reasoning"])
     max_tokens = MAX_TOKENS.get(kind, MAX_TOKENS["reasoning"])
+    repeat_penalty = REPEAT_PENALTY.get(kind, 1.1)
 
     return ChatOllama(
         model=model_name,
         base_url=OLLAMA_BASE_URL,
         temperature=temperature,
         num_predict=max_tokens,
-        num_ctx=4096,
+        num_ctx=8192,
+        repeat_penalty=repeat_penalty,
     )
