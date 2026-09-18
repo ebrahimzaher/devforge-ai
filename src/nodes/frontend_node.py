@@ -7,7 +7,8 @@ def frontend_node(state: ProjectState) -> ProjectState:
     if not task:
         return {"generated_code": {"frontend": None}}
 
-    code = run_frontend(task)
+    previous_code = state.get("generated_code", {}).get("frontend")
+    code = run_frontend(task, previous_code=previous_code)
 
     return {
         "generated_code": {"frontend": code},
