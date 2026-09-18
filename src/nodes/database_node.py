@@ -7,7 +7,8 @@ def database_node(state: ProjectState) -> ProjectState:
     if not task:
         return {"generated_code": {"database": None}}
 
-    code = run_database(task)
+    previous_code = state.get("generated_code", {}).get("database")
+    code = run_database(task, previous_code=previous_code)
 
     return {
         "generated_code": {"database": code},
