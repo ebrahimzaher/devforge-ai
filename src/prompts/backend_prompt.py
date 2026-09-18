@@ -23,4 +23,6 @@ Rules:
 - Keep the file set minimal but functional.
 - Escape the file contents properly so the JSON stays valid (e.g. escape
   newlines and quotes).
+- Always include ALL required imports/requires at the top of every file.
+  Never reference a library, module, or package without importing it first.
 """
