@@ -10,8 +10,6 @@ def qa_node(state: ProjectState) -> ProjectState:
         if not code:
             continue
         full_task = tasks.get(agent_name, "")
-        # Strip accumulated fix notes — QA should only evaluate against the
-        # original requirements, not the history of prior fix attempts.
         original_task = full_task.split("--- Fix required")[0].strip()
         result = run_qa(agent_name, original_task, code)
         issues[agent_name] = None if result.get("passed") else result.get("issue")

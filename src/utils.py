@@ -34,15 +34,8 @@ def parse_llm_json(raw: str, agent_name: str) -> dict:
 
     cleaned = _clean_control_chars(raw)
 
-    # Collapse LLM string-concatenation patterns that are invalid JSON:
-    #   Python-style: "..." \          JS-style: "..." +
-    #                 "..."                       "..."
-    # Strip the closing quote + operator + optional whitespace/newline + opening quote.
     cleaned = re.sub(r'"\s*(?:\\|\+)\s*\n?\s*"', "", cleaned)
 
-    # Fix invalid JSON escape sequences: a bare `\` not followed by a
-    # recognised JSON escape character (" \ / b f n r t u) is illegal.
-    # Double it so it becomes a literal backslash inside the JSON string.
     cleaned = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', cleaned)
 
     try:

@@ -22,7 +22,7 @@ MAX_TOKENS = {
 REPEAT_PENALTY = {
     "fast": 1.1,
     "reasoning": 1.1,
-    "code": 1.0,   # disabled — JSON structure triggers false repeat detection
+    "code": 1.0,
 }
 
 
