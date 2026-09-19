@@ -1,4 +1,5 @@
 from graph import build_graph
+from output_writer import write_project_to_disk
 
 def main():
     app = build_graph()
@@ -47,6 +48,18 @@ def main():
         print(result.get("escalation_reason"))
     if result.get("retry_count"):
         print("Retry counts:", result.get("retry_count"))
+
+    if result.get("generated_code"):
+        project_name = (result.get("requirements") or {}).get("project_type", "project")
+        write_result = write_project_to_disk(result["generated_code"], project_name=project_name)
+
+        print()
+        print("=" * 50)
+        print("Project saved to disk:")
+        print("=" * 50)
+        print(write_result["project_folder"])
+        for path in write_result["files_written"]:
+            print(f"  - {path}")
 
 if __name__ == "__main__":
     main()
