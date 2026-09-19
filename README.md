@@ -79,7 +79,7 @@ re-running the entire pipeline on a single agent's mistake throws away correct w
 
 This project didn't start on the setup it uses today — the model provider changed twice as real usage exposed real problems:
 
-1. **Groq** (first choice) — chosen for speed. Ran into two issues: Groq deprecated the models the project was built on (`llama-3.1-8b-instant`, `llama-3.3-70b-versatile`) with very little notice, and running Frontend/Backend/Database in parallel occasionally hit free-tier rate limits, causing an agent to return an empty response.
+1. **Groq** (first choice) — chosen for speed. Ran into two issues: Groq deprecated the models the project was built on (`openai/gpt-oss-20b`, `openai/gpt-oss-120b`) with very little notice, and running Frontend/Backend/Database in parallel occasionally hit free-tier rate limits, causing an agent to return an empty response.
 2. **Gemini** — tried next as a hosted alternative.
 3. **Ollama, running locally** — the current setup. No rate limits, no surprise deprecations, full control over context size and output length. Two local models were tested:
    - **`qwen2.5:3b-instruct`** — fast and cheap to run, but too small to reliably generate multi-file code that fully covered every requested feature.
