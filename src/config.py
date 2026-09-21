@@ -6,6 +6,8 @@ load_dotenv()
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b")
+OLLAMA_NUM_GPU = int(os.getenv("OLLAMA_NUM_GPU", "0"))
+MAX_RETRIES = 3
 
 MODELS = {
     "fast": OLLAMA_MODEL,
@@ -37,5 +39,6 @@ def get_llm(kind: str = "reasoning", temperature: float = 0.3):
         temperature=temperature,
         num_predict=max_tokens,
         num_ctx=8192,
+        num_gpu=OLLAMA_NUM_GPU,
         repeat_penalty=repeat_penalty,
     )

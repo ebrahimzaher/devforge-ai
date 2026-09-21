@@ -42,6 +42,12 @@ def main():
 
     print()
     print("=" * 50)
+    print("Integration report (cross-agent consistency check):")
+    print("=" * 50)
+    print(result.get("integration_report"))
+
+    print()
+    print("=" * 50)
     print(f"Final status: {result.get('status')}")
     print("=" * 50)
     if result.get("status") == "escalated":

@@ -7,3 +7,4 @@ from .database_agent import run_database
 from .ai_agent import run_ai
 from .qa_agent import run_qa
 from .escalation_agent import build_escalation_message
+from .integration_agent import run_integration
