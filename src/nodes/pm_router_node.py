@@ -13,8 +13,6 @@ def _collect_issues(qa_report: dict, integration_report: dict) -> dict:
         affected = mismatch.get("affected_agents", [])
         mismatch_type = mismatch.get("type", "")
 
-        # For endpoint mismatches the BACKEND is the authority.
-        # Only the frontend needs to adapt — never the backend.
         if mismatch_type == "endpoint_mismatch" and "frontend" in affected:
             note = (
                 "[Integration] ENDPOINT MISMATCH — the backend path is the source of truth. "
