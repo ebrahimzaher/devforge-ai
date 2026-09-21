@@ -22,12 +22,14 @@ You describe what you want in plain English — *"an e-commerce store with a log
 
 1. **Interprets** your request and produces a structured project brief
 2. **Analyses** the brief to determine the feature list, tech stack, and whether an AI feature is genuinely needed
-3. **Splits** the work into one self-contained task per specialist agent
-4. **Generates** frontend, backend, database (and optionally AI) code in parallel
-5. **Reviews** each agent's output individually against its own task
-6. **Retries** only the agents that failed, feeding them their own previous output + the specific QA feedback
-7. **Escalates** to a CEO summary message if an agent fails three times in a row
-8. **Writes** the finished project to disk as real, organized files
+3. **Defines an API contract** — a shared list of agreed endpoint paths, methods, and shapes that every agent follows
+4. **Splits** the work into one self-contained task per specialist agent, each carrying the API contract
+5. **Generates** frontend, backend, and database (and optionally AI) code **in parallel**
+6. **Reviews** each agent's output individually against its own task
+7. **Checks cross-agent consistency** — verifies that the frontend calls the exact paths the backend defines, schema names match, and response shapes align
+8. **Retries** only the agents that failed, feeding them their own previous output + specific QA / integration feedback
+9. **Escalates** to a CEO summary message if an agent fails three times in a row
+10. **Writes** the finished project to disk as real, organized files
 
 Every decision is driven by the pipeline state — nothing is hardcoded per project type.
 
@@ -37,32 +39,34 @@ Every decision is driven by the pipeline state — nothing is hardcoded per proj
 
 ```mermaid
 flowchart TD
-    A[User Request] --> B[CEO Agent<br/>brief]
-    B --> C[Analysis Agent<br/>requirements]
-    C --> D[PM Agent<br/>task breakdown]
-    D --> E[Frontend Agent]
-    D --> F[Backend Agent]
-    D --> G[Database Agent]
-    D -->|if AI feature needed| H[AI Agent]
-    E --> I[QA Agent]
-    F --> I
-    G --> I
-    H --> I
-    I --> J[PM Router]
-    J -->|done| K[Save project to disk]
-    J -->|needs_fix, retries left| L[Retry only the failed agent]
-    L --> I
-    J -->|escalated, 3 failed attempts| M[CEO Escalation]
-    K --> N[Final Result]
-    M --> N
+    A[User Request] --> B[CEO Agent\nbrief]
+    B --> C[Analysis Agent\nrequirements]
+    C --> D[PM Agent\ntasks + API contract]
+    D --> E["Parallel Coding Node\n(Frontend · Backend · Database · AI)\nThreadPoolExecutor"]
+    E --> F[QA Agent\nper-agent review]
+    F --> G[Integration Agent\ncross-agent consistency]
+    G --> H[PM Router\nevaluate results]
+    H -->|done| I[Save project to disk]
+    H -->|needs_fix — retry targets only| E
+    H -->|escalated after 3 attempts| J[CEO Escalation]
+    I --> K[Final Result]
+    J --> K
 ```
 
-Every request goes through the same pipeline. Only the agents that
-actually failed QA get re-run — the rest of the project is left alone.
+The **API contract** defined by the PM is embedded in every frontend and backend task, and passed to the Integration Agent as ground truth — so all agents share the same agreed endpoint paths from the start.
 
 ---
 
 ## Why certain decisions were made
+
+**Why the PM defines an API contract before assigning tasks:**
+without a shared contract, the frontend and backend independently invent endpoint paths and inevitably disagree. The PM now produces a canonical list of paths/methods/shapes *before* writing any task, then embeds it verbatim in both the frontend and backend tasks. The Integration Agent also receives this contract as its reference, eliminating the "who is right?" ambiguity.
+
+**Why the backend is the authority on endpoint mismatches:**
+when the integration check finds a path mismatch, only the frontend is asked to fix it — never both. Asking both sides to adjust simultaneously causes an oscillation loop where each agent corrects to a different path on every retry.
+
+**Why parallel execution uses `ThreadPoolExecutor` instead of LangGraph fan-out:**
+LangGraph's native superstep fan-out is real parallelism when the graph runner supports it, but on a single-threaded local Ollama setup the gain comes from overlapping the *HTTP wait time* between requests. Using an explicit `ThreadPoolExecutor` inside a single node gives the same overlap, keeps the graph topology simple (one node instead of four), and makes selective retry straightforward — only the agents in `retry_targets` are re-launched, not all four.
 
 **Why QA reviews agents one at a time, not all together:**
 reviewing the full codebase in a single call requires a huge context window. Reviewing each agent's output against just its own task keeps every call small — which matters especially when running on a local model with a limited context budget.
@@ -71,7 +75,7 @@ reviewing the full codebase in a single call requires a huge context window. Rev
 this is the one part of the system where a wrong or malformed response would be genuinely dangerous — it could loop forever or escalate incorrectly. Deterministic code can't hallucinate.
 
 **Why only the failed agents re-run on retry:**
-re-running the entire pipeline on a single agent's mistake throws away correct work and wastes compute. Only the agents that failed QA get a new task — and that task includes their own previous output, so they fix specific problems instead of regenerating from scratch.
+re-running the entire pipeline on a single agent's mistake throws away correct work and wastes compute. Only the agents that failed QA or the integration check get a new task — and that task includes their own previous output, so they fix specific problems instead of regenerating from scratch.
 
 ---
 
@@ -97,7 +101,7 @@ This project didn't start on the setup it uses today — the model provider chan
 | LLM | Ollama (local) via `langchain-ollama` |
 | Default model | `qwen2.5-coder:7b` |
 | Structured state | Python `TypedDict` with custom merge reducers |
-| Parallel execution | LangGraph native superstep fan-out |
+| Parallel execution | `ThreadPoolExecutor` inside `parallel_coding_node` |
 | Output | Files written to disk via `output_writer.py` |
 
 Everything runs fully locally — no cloud API required once Ollama is set up.
@@ -110,9 +114,9 @@ Everything runs fully locally — no cloud API required once Ollama is set up.
 devforge-ai/
 ├── src/
 │   ├── graph/
-│   │   ├── state.py        # ProjectState — shared across every agent
-│   │   └── workflow.py     # LangGraph wiring: nodes, edges, routing logic
-│   ├── agents/             # Pure LLM logic — no LangGraph knowledge here
+│   │   ├── state.py                # ProjectState — shared across every agent
+│   │   └── workflow.py             # LangGraph wiring: nodes, edges, routing + step logging
+│   ├── agents/                     # Pure LLM logic — no LangGraph knowledge here
 │   │   ├── ceo_agent.py
 │   │   ├── analysis_agent.py
 │   │   ├── pm_agent.py
@@ -121,23 +125,22 @@ devforge-ai/
 │   │   ├── database_agent.py
 │   │   ├── ai_agent.py
 │   │   ├── qa_agent.py
+│   │   ├── integration_agent.py
 │   │   └── escalation_agent.py
-│   ├── nodes/              # LangGraph wrappers — connect agents to state
+│   ├── nodes/                      # LangGraph wrappers — connect agents to state
 │   │   ├── ceo_node.py
 │   │   ├── analysis_node.py
 │   │   ├── pm_node.py
-│   │   ├── frontend_node.py
-│   │   ├── backend_node.py
-│   │   ├── database_node.py
-│   │   ├── ai_node.py
+│   │   ├── parallel_coding_node.py # Runs frontend/backend/database/ai in parallel threads
 │   │   ├── qa_node.py
+│   │   ├── integration_node.py
 │   │   ├── pm_router_node.py
 │   │   └── ceo_escalation_node.py
-│   ├── prompts/            # One system prompt per agent, versioned separately
-│   ├── config.py           # LLM provider + model selection, in one place
-│   ├── utils.py            # Shared JSON parsing and cleanup for LLM output
-│   ├── output_writer.py    # Writes the finished project to disk
-│   └── main.py             # Entry point
+│   ├── prompts/                    # One system prompt per agent, versioned separately
+│   ├── config.py                   # LLM provider + model selection, in one place
+│   ├── utils.py                    # Shared JSON parsing and cleanup for LLM output
+│   ├── output_writer.py            # Writes the finished project to disk
+│   └── main.py                     # Entry point
 ├── pyproject.toml
 ├── .env.example
 └── README.md
@@ -178,6 +181,7 @@ Relevant environment variables (all in `config.py`, overridable via `.env`):
 |----------|---------|---------:|
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Where Ollama is running |
 | `OLLAMA_MODEL` | `qwen2.5-coder:7b` | Model used by every agent |
+| `OLLAMA_NUM_GPU` | `0` | Number of GPU layers (0 = CPU only) |
 | `OLLAMA_HOME` | — | Override Ollama's home directory (e.g. a different drive) |
 | `GROQ_API_KEY` | — | Only needed if you switch `config.py` back to Groq |
 | `GOOGLE_API_KEY` | — | Only needed if you switch `config.py` back to Gemini |
@@ -192,7 +196,27 @@ python -m main
 devforge
 ```
 
-The console prints the brief, requirements, tasks, generated code snippets, QA report, and final status. On success, the project is written to disk under:
+The console prints live progress for every step:
+
+```
+[Step 1] >>> CEO Agent          — writing project brief ...
+[Step 1] <<< done in 16.1s
+
+[Step 2] >>> Analysis Agent     — extracting requirements ...
+[Step 2] <<< done in 19.2s
+
+[Step 3] >>> PM Agent           — planning tasks & API contract ...
+[Step 3] <<< done in 51.1s
+
+[Step 4] >>> Coding Agents      — generating code (parallel) ...
+[parallel_coding] initial — launching 3 agent(s) in parallel ...
+  [parallel] [OK] frontend done
+  [parallel] [OK] database done
+  [parallel] [OK] backend done
+[Step 4] <<< done in 87.3s
+```
+
+On success, the project is written to disk under:
 
 ```
 output/<project-name>-<timestamp>/
@@ -210,7 +234,10 @@ Each folder also contains a `NOTES.md` the generating agent left about its own a
 
 A few decisions worth calling out, since they came from real issues hit while building this:
 
-- **Parallel execution is real, not simulated.** LangGraph runs independent nodes in the same superstep and automatically waits for all of them before the next node fires — no manual synchronization code needed.
+- **The API contract is the single source of truth.** The PM generates a canonical list of endpoints before writing any task and embeds it verbatim in both the frontend and backend task descriptions. The Integration Agent also receives the contract as its reference — so mismatches are evaluated against a fixed ground truth, not inferred by comparing two moving targets.
+- **Parallel execution cuts wall-clock time by 3–4×.** Frontend, backend, database, and AI agents all run simultaneously inside a single `ThreadPoolExecutor`. Since Ollama processes one request at a time locally, the speedup comes from overlapping the HTTP round-trip and queueing — each subsequent agent's request is already queued before the previous one finishes.
+- **Selective retry avoids re-running correct agents.** `retry_targets` in the state carries only the agent names that failed. On re-entry, `parallel_coding_node` checks this list and skips agents that already passed — so a frontend fix doesn't re-generate a perfectly good database schema.
+- **Endpoint mismatch resolution is unidirectional.** When the integration check detects a path mismatch, `pm_router_node` always targets the frontend — never the backend. This prevents the oscillation where both agents keep changing paths toward each other across retries.
 - **LLM JSON output is unreliable at small model sizes.** `qwen2.5:3b-instruct` would sometimes produce string-concatenation patterns (`"..." \ "..."`) or bare backslashes inside JSON strings, both of which are invalid JSON. `utils.py` normalizes both before parsing — this made the 3B model usable where it would otherwise silently fail.
 - **QA only evaluates against the original task, not accumulated fix notes.** After a retry, the task string includes the QA feedback from the previous attempt. If QA evaluated against the full string (including `--- Fix required ---` sections), it would keep finding the same "issues" in the fix notes themselves. Stripping everything after the first fix delimiter before passing to QA prevents false re-failures.
 - **`generated_code` uses a merge reducer, not `keep_last`.** Multiple agents write to `generated_code` in the same superstep. Without a custom reducer, LangGraph would let each agent overwrite the others. The `merge_dicts` reducer merges at the top level so every agent's output survives the fan-in.
@@ -219,17 +246,21 @@ A few decisions worth calling out, since they came from real issues hit while bu
 
 ## Current status
 
-- [x] All 9 agents implemented and wired together
-- [x] Parallel Frontend / Backend / Database (+ conditional AI) execution
+- [x] All agents implemented and wired together (CEO, Analysis, PM, Frontend, Backend, Database, AI, QA, Integration)
+- [x] Shared API contract generated by PM and embedded in all agent tasks
+- [x] Parallel Frontend / Backend / Database / AI execution via `ThreadPoolExecutor`
+- [x] Live step-by-step progress logging with elapsed time
 - [x] Per-agent QA review
-- [x] PM-managed retry loop with a 3-attempt cap and CEO escalation
+- [x] Cross-agent integration check (endpoint paths, schema names, response shapes)
+- [x] Selective retry — only failed agents are re-run
+- [x] Unidirectional mismatch resolution (frontend adapts to backend, not both)
 - [x] Previous-code forwarding on retry
+- [x] PM-managed retry loop with a 3-attempt cap and CEO escalation
 - [x] Output written to disk as real project files
 - [ ] FastAPI REST API (`POST /generate`, `GET /status/{id}`)
 - [ ] Docker + Docker Compose support
-- [ ] Cross-agent consistency check (Frontend ↔ Backend ↔ Database API contract)
 - [ ] Automated tests for the generated project
-- [ ] Self-consistency: generate N candidates, pick the best (especially useful for Backend/Database where small-model mistakes matter most)
+- [ ] Self-consistency: generate N candidates, pick the best
 
 ---
 

@@ -1,4 +1,4 @@
-from typing import TypedDict, Literal, Optional, Dict, Any, Annotated
+from typing import TypedDict, Literal, Optional, Dict, Any, List, Annotated
 
 def merge_dicts(left: dict, right: dict) -> dict:
     return {**left, **right}
@@ -19,8 +19,12 @@ class ProjectState(TypedDict, total=False):
 
     qa_report: Optional[Dict[str, Any]]
 
+    integration_report: Optional[Dict[str, Any]]
+
     retry_count: Optional[Dict[str, int]]
-    
+
+    retry_targets: Optional[List[str]]
+
     escalation_reason: Optional[str]
 
     status: Annotated[Literal["in_progress", "needs_fix", "escalated", "done"], keep_last]
