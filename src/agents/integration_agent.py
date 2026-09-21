@@ -12,7 +12,6 @@ def run_integration(generated_code: dict, api_contract: str = "") -> dict:
         if code
     }
 
-    # Prepend the agreed API contract so the model has a clear ground truth
     user_content = ""
     if api_contract:
         user_content = (

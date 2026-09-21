@@ -3,7 +3,6 @@ from langgraph.graph import StateGraph, START, END
 from graph import ProjectState
 from nodes import *
 
-# ── Friendly display names for each node ──────────────────────────────────────
 _NODE_LABELS = {
     "ceo":              "CEO Agent          — writing project brief",
     "analysis":         "Analysis Agent     — extracting requirements",
@@ -15,7 +14,7 @@ _NODE_LABELS = {
     "ceo_escalation":   "CEO Escalation     — handling unresolved issues",
 }
 
-_STEP = [0]  # mutable counter shared across calls
+_STEP = [0]
 
 
 def _logged(name: str, fn):
@@ -35,8 +34,6 @@ def _logged(name: str, fn):
     return wrapper
 
 
-# ── Routing functions ──────────────────────────────────────────────────────────
-
 def route_after_pm_router(state: ProjectState):
     status = state.get("status")
     if status == "done":
@@ -46,12 +43,9 @@ def route_after_pm_router(state: ProjectState):
     return ["parallel_coding"]
 
 
-# ── Graph builder ──────────────────────────────────────────────────────────────
-
 def build_graph():
     graph = StateGraph(ProjectState)
 
-    # Register nodes with logging wrappers
     for node_name, node_fn in [
         ("ceo",             ceo_node),
         ("analysis",        analysis_node),
