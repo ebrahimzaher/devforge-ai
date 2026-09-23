@@ -8,6 +8,7 @@
 ![LangGraph](https://img.shields.io/badge/LangGraph-0.2-orange)
 ![Ollama](https://img.shields.io/badge/Ollama-Local_LLM-black?logo=ollama&logoColor=white)
 ![LangChain](https://img.shields.io/badge/LangChain-Powered-1C3C3C?logo=langchain&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-REST_API-009688?logo=fastapi&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-brightgreen)
 
 [🐛 Report Bug](../../issues) · [💡 Request Feature](../../issues)
@@ -30,6 +31,8 @@ You describe what you want in plain English — *"an e-commerce store with a log
 8. **Retries** only the agents that failed, feeding them their own previous output + specific QA / integration feedback
 9. **Escalates** to a CEO summary message if an agent fails three times in a row
 10. **Writes** the finished project to disk as real, organized files
+
+You can drive DevForge AI either via the **CLI** (interactive terminal) or via its **REST API** — submit a job, poll its status, and retrieve the result when it's done.
 
 Every decision is driven by the pipeline state — nothing is hardcoded per project type.
 
@@ -77,6 +80,9 @@ this is the one part of the system where a wrong or malformed response would be 
 **Why only the failed agents re-run on retry:**
 re-running the entire pipeline on a single agent's mistake throws away correct work and wastes compute. Only the agents that failed QA or the integration check get a new task — and that task includes their own previous output, so they fix specific problems instead of regenerating from scratch.
 
+**Why the REST API runs the pipeline in a background task:**
+code generation can take minutes. Blocking the HTTP request until the pipeline finishes is impractical — the connection would time out. Instead, `POST /generate` immediately returns a `job_id` (HTTP 202), and the pipeline runs in a FastAPI `BackgroundTask`. Clients poll `GET /status/{job_id}` and fetch the full result from `GET /result/{job_id}` when status is `done`.
+
 ---
 
 ## The LLM provider journey
@@ -102,6 +108,8 @@ This project didn't start on the setup it uses today — the model provider chan
 | Default model | `qwen2.5-coder:7b` |
 | Structured state | Python `TypedDict` with custom merge reducers |
 | Parallel execution | `ThreadPoolExecutor` inside `parallel_coding_node` |
+| REST API | FastAPI + Uvicorn |
+| Job management | In-memory `JobStore` with thread-safe locking |
 | Output | Files written to disk via `output_writer.py` |
 
 Everything runs fully locally — no cloud API required once Ollama is set up.
@@ -136,11 +144,17 @@ devforge-ai/
 │   │   ├── integration_node.py
 │   │   ├── pm_router_node.py
 │   │   └── ceo_escalation_node.py
+│   ├── api/                        # FastAPI REST layer
+│   │   ├── app.py                  # FastAPI application factory
+│   │   ├── routes.py               # Endpoints: /generate, /status, /result, /jobs, /health
+│   │   ├── models.py               # Pydantic request / response models
+│   │   └── job_store.py            # Thread-safe in-memory job registry
 │   ├── prompts/                    # One system prompt per agent, versioned separately
 │   ├── config.py                   # LLM provider + model selection, in one place
 │   ├── utils.py                    # Shared JSON parsing and cleanup for LLM output
 │   ├── output_writer.py            # Writes the finished project to disk
-│   └── main.py                     # Entry point
+│   ├── server.py                   # Uvicorn entrypoint for the REST API
+│   └── main.py                     # CLI entry point
 ├── pyproject.toml
 ├── .env.example
 └── README.md
@@ -190,6 +204,8 @@ Relevant environment variables (all in `config.py`, overridable via `.env`):
 
 ## Usage
 
+### CLI
+
 ```bash
 python -m main
 # or, via the entry point defined in pyproject.toml:
@@ -216,6 +232,48 @@ The console prints live progress for every step:
 [Step 4] <<< done in 87.3s
 ```
 
+### REST API
+
+Start the server:
+
+```bash
+devforge-server
+# or directly:
+python -m server
+```
+
+The API runs at `http://localhost:8000`. Interactive docs are available at [`http://localhost:8000/docs`](http://localhost:8000/docs).
+
+#### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check |
+| `POST` | `/generate` | Submit a new code generation job (returns `job_id` immediately, HTTP 202) |
+| `GET` | `/status/{job_id}` | Poll job status (`pending` → `running` → `done` / `failed`) |
+| `GET` | `/result/{job_id}` | Fetch the full result once the job is `done` |
+| `GET` | `/jobs` | List all jobs |
+
+#### Example flow
+
+```bash
+# 1 — Submit a job
+curl -s -X POST http://localhost:8000/generate \
+  -H "Content-Type: application/json" \
+  -d '{"user_request": "a todo app with user authentication"}' | jq
+# → { "job_id": "3fa85f64-...", "status": "pending" }
+
+# 2 — Poll status
+curl -s http://localhost:8000/status/3fa85f64-... | jq
+# → { "job_id": "...", "status": "running", ... }
+
+# 3 — Get result when done
+curl -s http://localhost:8000/result/3fa85f64-... | jq
+# → { "status": "done", "output_folder": "output/todo-app-...", "files_written": [...], ... }
+```
+
+---
+
 On success, the project is written to disk under:
 
 ```
@@ -241,6 +299,7 @@ A few decisions worth calling out, since they came from real issues hit while bu
 - **LLM JSON output is unreliable at small model sizes.** `qwen2.5:3b-instruct` would sometimes produce string-concatenation patterns (`"..." \ "..."`) or bare backslashes inside JSON strings, both of which are invalid JSON. `utils.py` normalizes both before parsing — this made the 3B model usable where it would otherwise silently fail.
 - **QA only evaluates against the original task, not accumulated fix notes.** After a retry, the task string includes the QA feedback from the previous attempt. If QA evaluated against the full string (including `--- Fix required ---` sections), it would keep finding the same "issues" in the fix notes themselves. Stripping everything after the first fix delimiter before passing to QA prevents false re-failures.
 - **`generated_code` uses a merge reducer, not `keep_last`.** Multiple agents write to `generated_code` in the same superstep. Without a custom reducer, LangGraph would let each agent overwrite the others. The `merge_dicts` reducer merges at the top level so every agent's output survives the fan-in.
+- **The REST API uses an in-memory `JobStore` with thread-safe locking.** Each job is stored as a `Job` dataclass. All reads and writes go through a `threading.Lock` so concurrent background tasks (one per submitted job) don't race each other. The store is intentionally in-memory — restarting the server clears all jobs.
 
 ---
 
@@ -257,7 +316,7 @@ A few decisions worth calling out, since they came from real issues hit while bu
 - [x] Previous-code forwarding on retry
 - [x] PM-managed retry loop with a 3-attempt cap and CEO escalation
 - [x] Output written to disk as real project files
-- [ ] FastAPI REST API (`POST /generate`, `GET /status/{id}`)
+- [x] FastAPI REST API (`POST /generate`, `GET /status/{id}`, `GET /result/{id}`, `GET /jobs`)
 - [ ] Docker + Docker Compose support
 - [ ] Automated tests for the generated project
 - [ ] Self-consistency: generate N candidates, pick the best
