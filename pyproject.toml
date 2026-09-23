@@ -13,14 +13,17 @@ dependencies = [
     "langchain-groq>=0.2.0",
     "langchain-ollama>=0.3.0",
     "python-dotenv>=1.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
 ]
 
 [project.scripts]
 devforge = "main:main"
+devforge-server = "server:start"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-py-modules = ["config", "main"]
+py-modules = ["config", "main", "server"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
