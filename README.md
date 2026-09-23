@@ -5,7 +5,7 @@
 **A stateful multi-agent system that turns a plain-language software request into a complete, working codebase — automatically planned, coded, reviewed, and fixed by a pipeline of specialized AI agents.**
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)
-![LangGraph](https://img.shields.io/badge/LangGraph-0.2-orange)
+![LangGraph](https://img.shields.io/badge/LangGraph-1.2-orange)
 ![Ollama](https://img.shields.io/badge/Ollama-Local_LLM-black?logo=ollama&logoColor=white)
 ![LangChain](https://img.shields.io/badge/LangChain-Powered-1C3C3C?logo=langchain&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-REST_API-009688?logo=fastapi&logoColor=white)
@@ -110,6 +110,7 @@ This project didn't start on the setup it uses today — the model provider chan
 | Parallel execution | `ThreadPoolExecutor` inside `parallel_coding_node` |
 | REST API | FastAPI + Uvicorn |
 | Job management | In-memory `JobStore` with thread-safe locking |
+| Containerisation | Docker + Docker Compose |
 | Output | Files written to disk via `output_writer.py` |
 
 Everything runs fully locally — no cloud API required once Ollama is set up.
@@ -155,6 +156,9 @@ devforge-ai/
 │   ├── output_writer.py            # Writes the finished project to disk
 │   ├── server.py                   # Uvicorn entrypoint for the REST API
 │   └── main.py                     # CLI entry point
+├── Dockerfile                      # Multi-stage image for the API server
+├── docker-compose.yml              # Ollama sidecar + API + volume wiring
+├── .dockerignore
 ├── pyproject.toml
 ├── .env.example
 └── README.md
@@ -288,6 +292,82 @@ Each folder also contains a `NOTES.md` the generating agent left about its own a
 
 ---
 
+## Docker
+
+The easiest way to run DevForge AI — no Python install required.
+
+### Prerequisites
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or Docker Engine + Compose plugin)
+- ~6 GB of free disk space for the `qwen2.5-coder:7b` model weights
+
+### Quick start
+
+```bash
+# Clone the repo and copy the env file
+git clone https://github.com/ebrahimzaher/devforge-ai
+cd devforge-ai
+copy .env.example .env   # Windows
+# cp .env.example .env   # macOS/Linux
+
+# Build and start everything (Ollama + model pull + API)
+docker compose up --build
+```
+
+The first run downloads the model (~4.7 GB) — this can take several minutes depending on your connection.
+Once you see `Application startup complete`, the API is ready at `http://localhost:8000`.
+
+> **Note:** The build uses a multi-stage Dockerfile that installs packages into a `--prefix=/install` directory.
+> `packaging` must be pinned to an exact version (e.g. `packaging==26.3`) in `requirements.txt` — a range like
+> `packaging>=23.0` causes pip to skip installing it as a standalone package (pip bundles its own internal copy),
+> which makes `langchain_core` fail at import time with `ModuleNotFoundError: No module named 'packaging'`.
+
+### Useful commands
+
+```bash
+# Run in the background
+docker compose up --build -d
+
+# Stream logs
+docker compose logs -f api
+docker compose logs -f ollama
+
+# Stop everything
+docker compose down
+
+# Stop and wipe volumes (removes downloaded models and generated output)
+docker compose down -v
+
+# Use a different model
+OLLAMA_MODEL=qwen2.5:3b-instruct docker compose up --build
+```
+
+### GPU support (NVIDIA)
+
+Uncomment the `deploy` block inside `ollama` in [docker-compose.yml](file:///d:/devforge-ai/docker-compose.yml):
+
+```yaml
+deploy:
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: all
+          capabilities: [gpu]
+```
+
+Then set `OLLAMA_NUM_GPU=1` in your `.env` file.
+
+### Configuration
+
+| Variable | Default | Purpose |
+|----------|---------|--------|
+| `OLLAMA_MODEL` | `qwen2.5-coder:7b` | Model to pull and use |
+| `OLLAMA_NUM_GPU` | `0` | GPU layers (0 = CPU only) |
+| `API_PORT` | `8000` | Host port for the DevForge API |
+
+---
+
 ## Engineering notes
 
 A few decisions worth calling out, since they came from real issues hit while building this:
@@ -300,6 +380,7 @@ A few decisions worth calling out, since they came from real issues hit while bu
 - **QA only evaluates against the original task, not accumulated fix notes.** After a retry, the task string includes the QA feedback from the previous attempt. If QA evaluated against the full string (including `--- Fix required ---` sections), it would keep finding the same "issues" in the fix notes themselves. Stripping everything after the first fix delimiter before passing to QA prevents false re-failures.
 - **`generated_code` uses a merge reducer, not `keep_last`.** Multiple agents write to `generated_code` in the same superstep. Without a custom reducer, LangGraph would let each agent overwrite the others. The `merge_dicts` reducer merges at the top level so every agent's output survives the fan-in.
 - **The REST API uses an in-memory `JobStore` with thread-safe locking.** Each job is stored as a `Job` dataclass. All reads and writes go through a `threading.Lock` so concurrent background tasks (one per submitted job) don't race each other. The store is intentionally in-memory — restarting the server clears all jobs.
+- **`packaging` must be pinned by exact version in Docker.** The multi-stage build installs all packages into `--prefix=/install`. Because pip bundles its own internal copy of `packaging`, a `>=` range constraint lets pip skip installing it as a standalone package — causing `ModuleNotFoundError: No module named 'packaging'` at runtime. Pinning to an exact version (e.g. `packaging==26.3`) forces pip to install it into `/install` and copy it to the final image.
 
 ---
 
@@ -317,7 +398,8 @@ A few decisions worth calling out, since they came from real issues hit while bu
 - [x] PM-managed retry loop with a 3-attempt cap and CEO escalation
 - [x] Output written to disk as real project files
 - [x] FastAPI REST API (`POST /generate`, `GET /status/{id}`, `GET /result/{id}`, `GET /jobs`)
-- [ ] Docker + Docker Compose support
+- [x] Docker + Docker Compose support (Ollama sidecar, auto model pull, named volumes)
+- [x] Multi-stage Dockerfile with `--prefix=/install` isolation and exact `packaging` pin
 - [ ] Automated tests for the generated project
 - [ ] Self-consistency: generate N candidates, pick the best
 
