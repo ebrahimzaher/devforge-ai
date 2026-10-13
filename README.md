@@ -9,6 +9,7 @@
 ![Ollama](https://img.shields.io/badge/Ollama-Local_LLM-black?logo=ollama&logoColor=white)
 ![LangChain](https://img.shields.io/badge/LangChain-Powered-1C3C3C?logo=langchain&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-REST_API-009688?logo=fastapi&logoColor=white)
+![Frontend](https://img.shields.io/badge/Web_UI-Vanilla_CSS_%26_JS-purple)
 ![License](https://img.shields.io/badge/License-MIT-brightgreen)
 
 [🐛 Report Bug](../../issues) · [💡 Request Feature](../../issues)
@@ -32,7 +33,10 @@ You describe what you want in plain English — *"an e-commerce store with a log
 9. **Escalates** to a CEO summary message if an agent fails three times in a row
 10. **Writes** the finished project to disk as real, organized files
 
-You can drive DevForge AI either via the **CLI** (interactive terminal) or via its **REST API** — submit a job, poll its status, and retrieve the result when it's done.
+You can drive DevForge AI across **3 different interfaces**:
+- 🌐 **Web Dashboard UI** — Interactive dark-mode dashboard with real-time pipeline animation, code viewer, and job history.
+- 💻 **CLI** — Interactive terminal with live color-coded progress.
+- 🔌 **REST API** — Asynchronous job submission (`POST /generate`), status polling, and full result retrieval.
 
 Every decision is driven by the pipeline state — nothing is hardcoded per project type.
 
@@ -83,6 +87,9 @@ re-running the entire pipeline on a single agent's mistake throws away correct w
 **Why the REST API runs the pipeline in a background task:**
 code generation can take minutes. Blocking the HTTP request until the pipeline finishes is impractical — the connection would time out. Instead, `POST /generate` immediately returns a `job_id` (HTTP 202), and the pipeline runs in a FastAPI `BackgroundTask`. Clients poll `GET /status/{job_id}` and fetch the full result from `GET /result/{job_id}` when status is `done`.
 
+**Why the Web UI is served directly from FastAPI:**
+mounting the frontend directly as static assets at root `/` enables zero-config operation: opening the backend URL automatically serves the UI, eliminating CORS friction and allowing a single port or tunnel (e.g. Cloudflare) to serve both the web client and the backend API simultaneously on desktop and mobile.
+
 ---
 
 ## The LLM provider journey
@@ -108,8 +115,10 @@ This project didn't start on the setup it uses today — the model provider chan
 | Default model | `qwen2.5-coder:7b` |
 | Structured state | Python `TypedDict` with custom merge reducers |
 | Parallel execution | `ThreadPoolExecutor` inside `parallel_coding_node` |
-| REST API | FastAPI + Uvicorn |
+| Web Dashboard | Modular Vanilla CSS, HTML5 & JavaScript (no heavy framework required) |
+| REST API | FastAPI + Uvicorn + CORSMiddleware |
 | Job management | In-memory `JobStore` with thread-safe locking |
+| Remote access | Cloudflare Tunnel (`cloudflared`) |
 | Containerisation | Docker + Docker Compose |
 | Output | Files written to disk via `output_writer.py` |
 
@@ -145,8 +154,8 @@ devforge-ai/
 │   │   ├── integration_node.py
 │   │   ├── pm_router_node.py
 │   │   └── ceo_escalation_node.py
-│   ├── api/                        # FastAPI REST layer
-│   │   ├── app.py                  # FastAPI application factory
+│   ├── api/                        # FastAPI REST layer & static file server
+│   │   ├── app.py                  # App factory + CORS + static frontend mount
 │   │   ├── routes.py               # Endpoints: /generate, /status, /result, /jobs, /health
 │   │   ├── models.py               # Pydantic request / response models
 │   │   └── job_store.py            # Thread-safe in-memory job registry
@@ -156,6 +165,10 @@ devforge-ai/
 │   ├── output_writer.py            # Writes the finished project to disk
 │   ├── server.py                   # Uvicorn entrypoint for the REST API
 │   └── main.py                     # CLI entry point
+├── frontend/                       # Interactive Web Dashboard
+│   ├── index.html                  # Semantic UI structure
+│   ├── style.css                   # Glassmorphic dark-mode design system & animations
+│   └── app.js                      # Live tracking, polling, and results rendering
 ├── Dockerfile                      # Multi-stage image for the API server
 ├── docker-compose.yml              # Ollama sidecar + API + volume wiring
 ├── .dockerignore
@@ -197,6 +210,7 @@ Relevant environment variables (all in `config.py`, overridable via `.env`):
 
 | Variable | Default | Purpose |
 |----------|---------|---------:|
+| `PORT` | `8000` | Port for the FastAPI server |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Where Ollama is running |
 | `OLLAMA_MODEL` | `qwen2.5-coder:7b` | Model used by every agent |
 | `OLLAMA_NUM_GPU` | `0` | Number of GPU layers (0 = CPU only) |
@@ -208,7 +222,52 @@ Relevant environment variables (all in `config.py`, overridable via `.env`):
 
 ## Usage
 
-### CLI
+### 1. Web Dashboard (Recommended)
+
+Start the server:
+
+```bash
+python src/server.py
+# or via entrypoint:
+devforge-server
+```
+
+Open your browser to:
+👉 **`http://localhost:8000`** (or `http://localhost:8080` if custom port configured)
+
+**Features:**
+- 🎨 **Sleek Dark Theme:** Glassmorphism, animated particle canvas, responsive layout.
+- ⚡ **Live Pipeline Visualizer:** Highlights active agents (CEO → Analysis → PM → Coding → QA → Integration) with live status hints.
+- 💻 **Syntax-Highlighted Code Panels:** Interactive tabs for Frontend, Backend, Database, and AI code with one-click copy buttons.
+- 🧪 **QA & Integration Inspector:** View individual test results and cross-agent consistency reports.
+- 📂 **Job History & Persistence:** Browse previous generations and inspect full outputs instantly.
+
+---
+
+### 2. Testing on Mobile & Remote Access (Cloudflare Tunnel)
+
+You can access and test DevForge AI directly from your smartphone or share it with anyone outside your local network without port forwarding:
+
+#### Method A — Cloudflare Tunnel (Anywhere in the world):
+Download [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/tunnel-guide/local/) (`cloudflared`), then run:
+
+```powershell
+.\cloudflared.exe tunnel --url http://127.0.0.1:8080
+```
+
+> **Tip:** Use `127.0.0.1` instead of `localhost` on Windows to enforce IPv4 routing.
+
+Copy the public URL generated (e.g. `https://your-tunnel-name.trycloudflare.com`) and open it in your mobile browser. The UI and API connect automatically!
+
+#### Method B — Local Wi-Fi (Same Network):
+Find your PC's local IP address (`ipconfig`), and on your phone open:
+```text
+http://192.168.1.X:8080
+```
+
+---
+
+### 3. CLI
 
 ```bash
 python -m main
@@ -236,141 +295,78 @@ The console prints live progress for every step:
 [Step 4] <<< done in 87.3s
 ```
 
-### REST API
+---
 
-Start the server:
+### 4. REST API
 
+The API runs at `http://localhost:8000`. Interactive OpenAPI documentation is available at [`http://localhost:8000/docs`](http://localhost:8000/docs).
+
+#### Submit a generation job
 ```bash
-devforge-server
-# or directly:
-python -m server
-```
-
-The API runs at `http://localhost:8000`. Interactive docs are available at [`http://localhost:8000/docs`](http://localhost:8000/docs).
-
-#### Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/health` | Health check |
-| `POST` | `/generate` | Submit a new code generation job (returns `job_id` immediately, HTTP 202) |
-| `GET` | `/status/{job_id}` | Poll job status (`pending` → `running` → `done` / `failed`) |
-| `GET` | `/result/{job_id}` | Fetch the full result once the job is `done` |
-| `GET` | `/jobs` | List all jobs |
-
-#### Example flow
-
-```bash
-# 1 — Submit a job
-curl -s -X POST http://localhost:8000/generate \
+curl -X POST http://localhost:8000/generate \
   -H "Content-Type: application/json" \
-  -d '{"user_request": "a todo app with user authentication"}' | jq
-# → { "job_id": "3fa85f64-...", "status": "pending" }
-
-# 2 — Poll status
-curl -s http://localhost:8000/status/3fa85f64-... | jq
-# → { "job_id": "...", "status": "running", ... }
-
-# 3 — Get result when done
-curl -s http://localhost:8000/result/3fa85f64-... | jq
-# → { "status": "done", "output_folder": "output/todo-app-...", "files_written": [...], ... }
+  -d '{"user_request": "an e-commerce store with a login page and a shopping cart"}'
 ```
+Response (HTTP 202):
+```json
+{"job_id": "c153adf7-df4d-4832-b7f5-c66bb5706676", "status": "pending"}
+```
+
+#### Poll job status
+```bash
+curl http://localhost:8000/status/c153adf7-df4d-4832-b7f5-c66bb5706676
+```
+Response (HTTP 200):
+```json
+{
+  "job_id": "c153adf7-df4d-4832-b7f5-c66bb5706676",
+  "status": "running",
+  "created_at": "2026-10-13T13:47:00Z",
+  "updated_at": "2026-10-13T13:48:30Z"
+}
+```
+
+#### Fetch complete result
+```bash
+curl http://localhost:8000/result/c153adf7-df4d-4832-b7f5-c66bb5706676
+```
+*(Returns HTTP 425 while still running, and HTTP 200 with code, QA report, and files once done).*
 
 ---
 
-On success, the project is written to disk under:
-
-```
-output/<project-name>-<timestamp>/
-├── frontend/
-├── backend/
-├── database/
-└── ai/            (only if an AI feature was needed)
-```
-
-Each folder also contains a `NOTES.md` the generating agent left about its own assumptions and limitations.
-
----
-
-## Docker
-
-The easiest way to run DevForge AI — no Python install required.
+## Docker & Docker Compose
 
 ### Prerequisites
-
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or Docker Engine + Compose plugin)
 - ~6 GB of free disk space for the `qwen2.5-coder:7b` model weights
 
 ### Quick start
-
 ```bash
-# Clone the repo and copy the env file
-git clone https://github.com/ebrahimzaher/devforge-ai
-cd devforge-ai
-copy .env.example .env   # Windows
-# cp .env.example .env   # macOS/Linux
-
 # Build and start everything (Ollama + model pull + API)
 docker compose up --build
 ```
 
-The first run downloads the model (~4.7 GB) — this can take several minutes depending on your connection.
-Once you see `Application startup complete`, the API is ready at `http://localhost:8000`.
+The first run downloads the model (~4.7 GB). Once you see `Application startup complete`, open `http://localhost:8000`.
 
-> **Note:** The build uses a multi-stage Dockerfile that installs packages into a `--prefix=/install` directory.
-> `packaging` must be pinned to an exact version (e.g. `packaging==26.3`) in `requirements.txt` — a range like
-> `packaging>=23.0` causes pip to skip installing it as a standalone package (pip bundles its own internal copy),
-> which makes `langchain_core` fail at import time with `ModuleNotFoundError: No module named 'packaging'`.
-
-### Useful commands
-
+### Useful Docker commands
 ```bash
-# Run in the background
+# Run in background
 docker compose up --build -d
 
 # Stream logs
 docker compose logs -f api
 docker compose logs -f ollama
 
-# Stop everything
+# Stop containers
 docker compose down
 
-# Stop and wipe volumes (removes downloaded models and generated output)
+# Stop and wipe volumes
 docker compose down -v
-
-# Use a different model
-OLLAMA_MODEL=qwen2.5:3b-instruct docker compose up --build
 ```
-
-### GPU support (NVIDIA)
-
-Uncomment the `deploy` block inside `ollama` in [docker-compose.yml](file:///d:/devforge-ai/docker-compose.yml):
-
-```yaml
-deploy:
-  resources:
-    reservations:
-      devices:
-        - driver: nvidia
-          count: all
-          capabilities: [gpu]
-```
-
-Then set `OLLAMA_NUM_GPU=1` in your `.env` file.
-
-### Configuration
-
-| Variable | Default | Purpose |
-|----------|---------|--------|
-| `OLLAMA_MODEL` | `qwen2.5-coder:7b` | Model to pull and use |
-| `OLLAMA_NUM_GPU` | `0` | GPU layers (0 = CPU only) |
-| `API_PORT` | `8000` | Host port for the DevForge API |
 
 ---
 
 ## Engineering notes
-
-A few decisions worth calling out, since they came from real issues hit while building this:
 
 - **The API contract is the single source of truth.** The PM generates a canonical list of endpoints before writing any task and embeds it verbatim in both the frontend and backend task descriptions. The Integration Agent also receives the contract as its reference — so mismatches are evaluated against a fixed ground truth, not inferred by comparing two moving targets.
 - **Parallel execution cuts wall-clock time by 3–4×.** Frontend, backend, database, and AI agents all run simultaneously inside a single `ThreadPoolExecutor`. Since Ollama processes one request at a time locally, the speedup comes from overlapping the HTTP round-trip and queueing — each subsequent agent's request is already queued before the previous one finishes.
@@ -379,8 +375,7 @@ A few decisions worth calling out, since they came from real issues hit while bu
 - **LLM JSON output is unreliable at small model sizes.** `qwen2.5:3b-instruct` would sometimes produce string-concatenation patterns (`"..." \ "..."`) or bare backslashes inside JSON strings, both of which are invalid JSON. `utils.py` normalizes both before parsing — this made the 3B model usable where it would otherwise silently fail.
 - **QA only evaluates against the original task, not accumulated fix notes.** After a retry, the task string includes the QA feedback from the previous attempt. If QA evaluated against the full string (including `--- Fix required ---` sections), it would keep finding the same "issues" in the fix notes themselves. Stripping everything after the first fix delimiter before passing to QA prevents false re-failures.
 - **`generated_code` uses a merge reducer, not `keep_last`.** Multiple agents write to `generated_code` in the same superstep. Without a custom reducer, LangGraph would let each agent overwrite the others. The `merge_dicts` reducer merges at the top level so every agent's output survives the fan-in.
-- **The REST API uses an in-memory `JobStore` with thread-safe locking.** Each job is stored as a `Job` dataclass. All reads and writes go through a `threading.Lock` so concurrent background tasks (one per submitted job) don't race each other. The store is intentionally in-memory — restarting the server clears all jobs.
-- **`packaging` must be pinned by exact version in Docker.** The multi-stage build installs all packages into `--prefix=/install`. Because pip bundles its own internal copy of `packaging`, a `>=` range constraint lets pip skip installing it as a standalone package — causing `ModuleNotFoundError: No module named 'packaging'` at runtime. Pinning to an exact version (e.g. `packaging==26.3`) forces pip to install it into `/install` and copy it to the final image.
+- **Full-stack Static File Serving via FastAPI.** Serving modular frontend assets (`index.html`, `style.css`, `app.js`) directly through FastAPI eliminates CORS configurations for web clients and allows public deployment over a single domain or Cloudflare Tunnel.
 
 ---
 
@@ -398,8 +393,11 @@ A few decisions worth calling out, since they came from real issues hit while bu
 - [x] PM-managed retry loop with a 3-attempt cap and CEO escalation
 - [x] Output written to disk as real project files
 - [x] FastAPI REST API (`POST /generate`, `GET /status/{id}`, `GET /result/{id}`, `GET /jobs`)
+- [x] CORS middleware enabling cross-origin and web dashboard calls
+- [x] Interactive Web Dashboard with visual multi-agent pipeline tracker and code tabs
+- [x] Modular frontend architecture (`index.html`, `style.css`, `app.js`) served by FastAPI
+- [x] Remote and mobile access via Cloudflare Tunnel integration
 - [x] Docker + Docker Compose support (Ollama sidecar, auto model pull, named volumes)
-- [x] Multi-stage Dockerfile with `--prefix=/install` isolation and exact `packaging` pin
 - [ ] Automated tests for the generated project
 - [ ] Self-consistency: generate N candidates, pick the best
 
