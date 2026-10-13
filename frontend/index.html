@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DevForge AI — Multi-Agent Code Generator</title>
+  <meta name="description" content="Turn a plain-language description into a complete, working codebase powered by specialized AI agents." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<canvas class="bg-canvas" id="bgCanvas"></canvas>
+<div class="app">
+  <header>
+    <a class="logo" href="#">
+      <div class="logo-icon">&#9954;&#65039;</div>
+      <div class="logo-text">Dev<span>Forge</span> AI</div>
+    </a>
+    <div class="header-right">
+      <div class="api-badge" id="apiStatusBadge"><span class="api-dot"></span>Connecting&hellip;</div>
+      <button class="cog-btn" id="settingsBtn" title="API Settings">&#9881;&#65039;</button>
+    </div>
+  </header>
+
+  <div id="heroSection">
+    <div class="hero">
+      <h1>From Idea to Codebase,<br>Instantly.</h1>
+      <p>Describe your project in plain English &mdash; DevForge AI&rsquo;s multi-agent pipeline handles planning, coding, QA, and integration automatically.</p>
+    </div>
+    <div class="input-card">
+      <textarea id="promptInput" placeholder="e.g. Build an e-commerce store for selling clothes, with a shopping cart, user authentication, and product search&hellip;" maxlength="2000"></textarea>
+      <div class="input-footer">
+        <span class="char-count"><span id="charCount">0</span> / 2000 &nbsp;&middot;&nbsp; Ctrl+Enter to submit</span>
+        <button id="generateBtn"><span id="btnIcon">&#9889;</span> Generate Project</button>
+      </div>
+    </div>
+  </div>
+
+  <button id="newJobBtn">&#8592; Start New Project</button>
+
+  <div id="pipelineSection">
+    <div class="section-title">&#128260; Pipeline Progress</div>
+    <div class="pipeline" id="pipelineTrack"></div>
+    <div id="pipelineSubtitle" style="text-align:center;font-size:13px;color:var(--cyan);margin:14px 0 6px;min-height:20px;font-weight:500"></div>
+    <div class="status-card mt-4">
+      <div class="status-info">
+        <span class="status-badge pending" id="statusBadge">&#8987; Pending</span>
+        <span class="job-id-label">Job: <span id="jobIdLabel">&mdash;</span></span>
+      </div>
+      <span class="elapsed" id="elapsedLabel">0s</span>
+    </div>
+    <div class="poll-bar" id="pollBar"><div class="poll-bar-inner"></div></div>
+  </div>
+
+  <div id="resultsSection">
+    <div class="section-title">&#9989; Generation Complete</div>
+    <div class="result-grid" id="resultGrid"></div>
+  </div>
+
+  <div id="historySection" style="display:none">
+    <div class="section-title">&#128203; Previous Jobs</div>
+    <div class="result-card">
+      <table class="history-table">
+        <thead><tr><th>Request</th><th>Status</th><th>Created</th><th></th></tr></thead>
+        <tbody id="historyBody"><tr><td colspan="4" style="color:var(--text-muted);text-align:center;padding:24px">No previous jobs.</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <h3>&#9881;&#65039; API Settings</h3>
+    <p>Enter the DevForge AI backend URL &mdash; your Cloudflare Tunnel address or <code style="color:var(--cyan)">http://localhost:8000</code> for local access.</p>
+    <div style="margin-bottom:18px">
+      <label class="form-label" for="apiUrlInput">API BASE URL</label>
+      <input class="form-input" id="apiUrlInput" type="url" placeholder="https://xxxx-xxxx.trycloudflare.com" />
+      <div class="form-hint">No trailing slash. E.g. <code>https://decrease-hearings-sussex-albany.trycloudflare.com</code></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" id="cancelSettingsBtn">Cancel</button>
+      <button class="btn-primary" id="saveSettingsBtn">Save &amp; Test Connection</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
