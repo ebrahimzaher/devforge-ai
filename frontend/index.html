@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DevForge AI — Multi-Agent Code Generator</title>
+  <meta name="description" content="Turn a plain-language description into a complete, working codebase powered by specialized AI agents." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:#07070f; --bg2:#0d0d1a; --bg3:#11112a;
+      --surface:rgba(255,255,255,0.04); --border:rgba(255,255,255,0.08);
+      --border-hl:rgba(139,92,246,0.5);
+      --purple:#8b5cf6; --purple-dim:#6d28d9;
+      --cyan:#22d3ee; --green:#10b981; --amber:#f59e0b; --red:#f43f5e;
+      --text:#e2e8f0; --text-muted:#64748b; --text-dim:#94a3b8;
+      --font:'Inter',sans-serif; --mono:'JetBrains Mono',monospace;
+    }
+    html { scroll-behavior:smooth; }
+    body { font-family:var(--font); background:var(--bg); color:var(--text); min-height:100vh; overflow-x:hidden; }
+    .bg-canvas { position:fixed; inset:0; z-index:0; pointer-events:none; }
+    .app { position:relative; z-index:1; max-width:1100px; margin:0 auto; padding:0 24px 80px; }
+
+    header { display:flex; align-items:center; justify-content:space-between; padding:28px 0 48px; }
+    .logo { display:flex; align-items:center; gap:12px; text-decoration:none; }
+    .logo-icon { width:44px; height:44px; background:linear-gradient(135deg,var(--purple),var(--cyan)); border-radius:12px; display:grid; place-items:center; font-size:22px; box-shadow:0 0 24px rgba(139,92,246,0.5); }
+    .logo-text { font-size:20px; font-weight:700; letter-spacing:-0.5px; }
+    .logo-text span { color:var(--purple); }
+    .header-right { display:flex; align-items:center; gap:12px; }
+    .api-badge { font-size:12px; font-family:var(--mono); background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:4px 10px; color:var(--text-dim); }
+    .api-dot { width:6px; height:6px; border-radius:50%; background:var(--green); display:inline-block; margin-right:6px; animation:pulse-dot 2s infinite; }
+    @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .cog-btn { background:none; border:1px solid var(--border); border-radius:8px; padding:7px 10px; cursor:pointer; color:var(--text-muted); font-size:16px; transition:all .2s; }
+    .cog-btn:hover { border-color:var(--purple); color:var(--text); }
+
+    .hero { text-align:center; margin-bottom:56px; }
+    .hero h1 { font-size:clamp(32px,5vw,52px); font-weight:800; letter-spacing:-1.5px; background:linear-gradient(135deg,#fff 30%,var(--purple) 60%,var(--cyan)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; margin-bottom:14px; line-height:1.15; }
+    .hero p { font-size:17px; color:var(--text-dim); max-width:560px; margin:0 auto 40px; line-height:1.6; }
+
+    .input-card { background:rgba(13,13,26,0.9); border:1px solid var(--border); border-radius:20px; padding:24px; backdrop-filter:blur(20px); box-shadow:0 0 60px rgba(139,92,246,0.08); transition:border-color .3s,box-shadow .3s; }
+    .input-card:focus-within { border-color:var(--border-hl); box-shadow:0 0 60px rgba(139,92,246,0.18); }
+    #promptInput { width:100%; min-height:130px; resize:vertical; background:transparent; border:none; outline:none; font-family:var(--font); font-size:16px; color:var(--text); line-height:1.6; }
+    #promptInput::placeholder { color:var(--text-muted); }
+    .input-footer { display:flex; align-items:center; justify-content:space-between; margin-top:16px; }
+    .char-count { font-size:12px; color:var(--text-muted); font-family:var(--mono); }
+
+    #generateBtn { display:flex; align-items:center; gap:10px; padding:13px 28px; border-radius:12px; background:linear-gradient(135deg,var(--purple-dim),var(--purple)); border:1px solid rgba(139,92,246,0.4); color:#fff; font-family:var(--font); font-size:15px; font-weight:600; cursor:pointer; transition:all .25s; box-shadow:0 4px 20px rgba(139,92,246,0.35); }
+    #generateBtn:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 8px 32px rgba(139,92,246,0.55); }
+    #generateBtn:disabled { opacity:.5; cursor:not-allowed; transform:none; }
+
+    #pipelineSection { display:none; margin-bottom:48px; animation:fadeIn .4s ease; }
+    .section-title { font-size:13px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--text-muted); margin-bottom:20px; }
+    .pipeline { display:flex; align-items:center; overflow-x:auto; padding-bottom:4px; }
+    .pipeline::-webkit-scrollbar { height:3px; } .pipeline::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+    .stage { display:flex; flex-direction:column; align-items:center; gap:8px; flex:1; min-width:90px; }
+    .stage-connector { flex:1; height:2px; background:var(--border); min-width:20px; margin-top:-20px; transition:background .5s; }
+    .stage-connector.done { background:linear-gradient(90deg,var(--purple),var(--cyan)); }
+    .stage-bubble { width:48px; height:48px; border-radius:50%; background:var(--surface); border:2px solid var(--border); display:grid; place-items:center; font-size:20px; transition:all .4s; }
+    .stage.active .stage-bubble { border-color:var(--purple); box-shadow:0 0 20px rgba(139,92,246,0.6); animation:stagePulse 1.5s infinite; }
+    .stage.done .stage-bubble { background:linear-gradient(135deg,var(--purple-dim),var(--purple)); border-color:var(--purple); }
+    .stage.failed .stage-bubble { background:rgba(244,63,94,0.15); border-color:var(--red); }
+    @keyframes stagePulse { 0%,100%{box-shadow:0 0 20px rgba(139,92,246,0.6)} 50%{box-shadow:0 0 35px rgba(139,92,246,0.9)} }
+    .stage-name { font-size:11px; font-weight:500; color:var(--text-muted); text-align:center; line-height:1.3; }
+    .stage.active .stage-name { color:var(--purple); } .stage.done .stage-name { color:var(--cyan); } .stage.failed .stage-name { color:var(--red); }
+
+    .status-card { background:var(--bg2); border:1px solid var(--border); border-radius:16px; padding:20px 24px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:32px; }
+    .status-info { display:flex; align-items:center; gap:12px; }
+    .status-badge { padding:5px 14px; border-radius:100px; font-size:12px; font-weight:600; font-family:var(--mono); }
+    .status-badge.pending { background:rgba(100,116,139,0.2); color:var(--text-dim); }
+    .status-badge.running { background:rgba(139,92,246,0.2); color:var(--purple); animation:badgePulse 2s infinite; }
+    .status-badge.done { background:rgba(16,185,129,0.2); color:var(--green); }
+    .status-badge.failed { background:rgba(244,63,94,0.2); color:var(--red); }
+    @keyframes badgePulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+    .job-id-label { font-size:12px; font-family:var(--mono); color:var(--text-muted); }
+    .elapsed { font-size:13px; font-family:var(--mono); color:var(--text-dim); }
+    .poll-bar { height:3px; border-radius:2px; overflow:hidden; margin-top:12px; }
+    .poll-bar-inner { height:100%; background:linear-gradient(90deg,var(--purple),var(--cyan)); animation:scanLeft 2s linear infinite; background-size:200%; }
+    @keyframes scanLeft { 0%{background-position:200%} 100%{background-position:-200%} }
+
+    #resultsSection { display:none; animation:fadeIn .5s ease; }
+    .result-grid { display:grid; gap:20px; }
+    .result-card { background:var(--bg2); border:1px solid var(--border); border-radius:16px; overflow:hidden; }
+    .result-card-header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); cursor:pointer; user-select:none; }
+    .result-card-header:hover { background:rgba(255,255,255,0.02); }
+    .result-card-title { font-size:14px; font-weight:600; }
+    .chevron { transition:transform .3s; color:var(--text-muted); }
+    .result-card.collapsed .chevron { transform:rotate(-90deg); }
+    .result-card-body { padding:20px; }
+    .result-card.collapsed .result-card-body { display:none; }
+    .brief-text { font-size:14px; line-height:1.7; color:var(--text-dim); white-space:pre-wrap; }
+    .chips { display:flex; flex-wrap:wrap; gap:8px; }
+    .chip { padding:4px 12px; border-radius:100px; font-size:12px; font-weight:500; background:rgba(139,92,246,0.12); border:1px solid rgba(139,92,246,0.2); color:#c4b5fd; }
+    .tag-pass { background:rgba(16,185,129,0.12)!important; border-color:rgba(16,185,129,0.2)!important; color:#6ee7b7!important; }
+    .tag-fail { background:rgba(244,63,94,0.12)!important; border-color:rgba(244,63,94,0.2)!important; color:#fda4af!important; }
+    .code-tabs { display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; }
+    .code-tab { padding:6px 16px; border-radius:8px; font-size:12px; font-weight:500; background:var(--surface); border:1px solid var(--border); color:var(--text-dim); cursor:pointer; transition:all .2s; font-family:var(--mono); }
+    .code-tab.active { background:rgba(139,92,246,0.2); border-color:var(--purple); color:var(--purple); }
+    .code-panel { display:none; } .code-panel.active { display:block; }
+    .code-block { background:#090914; border:1px solid var(--border); border-radius:10px; padding:18px; overflow:auto; font-family:var(--mono); font-size:13px; line-height:1.6; color:#a5b4fc; max-height:480px; white-space:pre; position:relative; }
+    .code-block::-webkit-scrollbar { width:5px; height:5px; } .code-block::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+    .copy-btn { position:absolute; top:10px; right:10px; background:rgba(255,255,255,0.07); border:1px solid var(--border); border-radius:6px; padding:4px 10px; font-size:11px; color:var(--text-muted); cursor:pointer; transition:all .2s; }
+    .copy-btn:hover { background:rgba(255,255,255,0.12); color:var(--text); }
+    .files-list { display:flex; flex-direction:column; gap:6px; margin-top:12px; }
+    .file-item { display:flex; align-items:center; gap:8px; padding:8px 12px; border-radius:8px; background:var(--surface); border:1px solid var(--border); font-family:var(--mono); font-size:12px; color:var(--text-dim); }
+    .file-icon { color:var(--cyan); }
+
+    #historySection { margin-top:60px; }
+    .history-table { width:100%; border-collapse:collapse; }
+    .history-table th { text-align:left; font-size:11px; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:var(--text-muted); padding:8px 16px; border-bottom:1px solid var(--border); }
+    .history-table td { padding:14px 16px; border-bottom:1px solid rgba(255,255,255,0.04); font-size:13px; }
+    .history-table tr:hover td { background:rgba(255,255,255,0.02); }
+    .history-table tr:last-child td { border-bottom:none; }
+    .view-link { padding:4px 12px; border-radius:6px; font-size:12px; font-weight:500; background:rgba(139,92,246,0.12); color:var(--purple); border:1px solid rgba(139,92,246,0.2); cursor:pointer; transition:all .2s; }
+    .view-link:hover { background:rgba(139,92,246,0.25); }
+
+    .modal-overlay { display:none; position:fixed; inset:0; z-index:100; background:rgba(0,0,0,0.7); backdrop-filter:blur(6px); place-items:center; }
+    .modal-overlay.open { display:grid; animation:fadeIn .2s ease; }
+    .modal { background:var(--bg2); border:1px solid var(--border); border-radius:20px; padding:32px; width:min(480px,90vw); box-shadow:0 32px 80px rgba(0,0,0,0.6); }
+    .modal h3 { font-size:18px; font-weight:700; margin-bottom:6px; }
+    .modal p { font-size:13px; color:var(--text-dim); margin-bottom:24px; }
+    .form-label { font-size:12px; font-weight:600; color:var(--text-dim); display:block; margin-bottom:6px; }
+    .form-input { width:100%; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:11px 14px; font-family:var(--mono); font-size:13px; color:var(--text); outline:none; transition:border-color .2s; }
+    .form-input:focus { border-color:var(--purple); }
+    .form-hint { font-size:12px; color:var(--text-muted); margin-top:6px; }
+    .modal-footer { display:flex; gap:10px; justify-content:flex-end; margin-top:24px; }
+    .btn-ghost { padding:10px 20px; border-radius:10px; background:transparent; border:1px solid var(--border); color:var(--text-dim); font-family:var(--font); font-size:14px; cursor:pointer; transition:all .2s; }
+    .btn-ghost:hover { border-color:var(--text-dim); color:var(--text); }
+    .btn-primary { padding:10px 22px; border-radius:10px; background:linear-gradient(135deg,var(--purple-dim),var(--purple)); border:none; color:#fff; font-family:var(--font); font-size:14px; font-weight:600; cursor:pointer; transition:all .2s; }
+    .btn-primary:hover { box-shadow:0 4px 20px rgba(139,92,246,0.4); }
+
+    .toast-container { position:fixed; bottom:24px; right:24px; z-index:200; display:flex; flex-direction:column; gap:8px; }
+    .toast { padding:12px 18px; border-radius:10px; font-size:13px; font-weight:500; background:var(--bg3); border:1px solid var(--border); box-shadow:0 8px 24px rgba(0,0,0,0.4); animation:toastIn .3s ease; max-width:320px; }
+    .toast.success { border-color:rgba(16,185,129,0.4); color:#6ee7b7; }
+    .toast.error   { border-color:rgba(244,63,94,0.4);  color:#fda4af; }
+    .toast.info    { border-color:rgba(139,92,246,0.4); color:#c4b5fd; }
+    @keyframes toastIn { from{transform:translateX(20px);opacity:0} to{transform:none;opacity:1} }
+    @keyframes fadeIn  { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
+    @keyframes spin    { to{transform:rotate(360deg)} }
+
+    #newJobBtn { display:none; align-items:center; gap:8px; padding:10px 20px; border-radius:10px; background:var(--surface); border:1px solid var(--border); color:var(--text-dim); font-family:var(--font); font-size:14px; cursor:pointer; transition:all .2s; margin-bottom:24px; }
+    #newJobBtn:hover { border-color:var(--purple); color:var(--text); }
+    #newJobBtn.visible { display:flex; }
+    .error-box { background:rgba(244,63,94,0.08); border:1px solid rgba(244,63,94,0.2); border-radius:12px; padding:16px 20px; color:#fda4af; font-size:14px; line-height:1.6; }
+    .mt-4 { margin-top:16px; }
+  </style>
+</head>
+<body>
+<canvas class="bg-canvas" id="bgCanvas"></canvas>
+<div class="app">
+  <header>
+    <a class="logo" href="#">
+      <div class="logo-icon">&#9954;&#65039;</div>
+      <div class="logo-text">Dev<span>Forge</span> AI</div>
+    </a>
+    <div class="header-right">
+      <div class="api-badge" id="apiStatusBadge"><span class="api-dot"></span>Connecting&hellip;</div>
+      <button class="cog-btn" id="settingsBtn" title="API Settings">&#9881;&#65039;</button>
+    </div>
+  </header>
+
+  <div id="heroSection">
+    <div class="hero">
+      <h1>From Idea to Codebase,<br>Instantly.</h1>
+      <p>Describe your project in plain English &mdash; DevForge AI&rsquo;s multi-agent pipeline handles planning, coding, QA, and integration automatically.</p>
+    </div>
+    <div class="input-card">
+      <textarea id="promptInput" placeholder="e.g. Build an e-commerce store for selling clothes, with a shopping cart, user authentication, and product search&hellip;" maxlength="2000"></textarea>
+      <div class="input-footer">
+        <span class="char-count"><span id="charCount">0</span> / 2000 &nbsp;&middot;&nbsp; Ctrl+Enter to submit</span>
+        <button id="generateBtn"><span id="btnIcon">&#9889;</span> Generate Project</button>
+      </div>
+    </div>
+  </div>
+
+  <button id="newJobBtn">&#8592; Start New Project</button>
+
+  <div id="pipelineSection">
+    <div class="section-title">&#128260; Pipeline Progress</div>
+    <div class="pipeline" id="pipelineTrack"></div>
+    <div id="pipelineSubtitle" style="text-align:center;font-size:13px;color:var(--cyan);margin:14px 0 6px;min-height:20px;font-weight:500"></div>
+    <div class="status-card mt-4">
+      <div class="status-info">
+        <span class="status-badge pending" id="statusBadge">&#8987; Pending</span>
+        <span class="job-id-label">Job: <span id="jobIdLabel">&mdash;</span></span>
+      </div>
+      <span class="elapsed" id="elapsedLabel">0s</span>
+    </div>
+    <div class="poll-bar" id="pollBar"><div class="poll-bar-inner"></div></div>
+  </div>
+
+  <div id="resultsSection">
+    <div class="section-title">&#9989; Generation Complete</div>
+    <div class="result-grid" id="resultGrid"></div>
+  </div>
+
+  <div id="historySection" style="display:none">
+    <div class="section-title">&#128203; Previous Jobs</div>
+    <div class="result-card">
+      <table class="history-table">
+        <thead><tr><th>Request</th><th>Status</th><th>Created</th><th></th></tr></thead>
+        <tbody id="historyBody"><tr><td colspan="4" style="color:var(--text-muted);text-align:center;padding:24px">No previous jobs.</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <h3>&#9881;&#65039; API Settings</h3>
+    <p>Enter the DevForge AI backend URL &mdash; your Cloudflare Tunnel address or <code style="color:var(--cyan)">http://localhost:8000</code> for local access.</p>
+    <div style="margin-bottom:18px">
+      <label class="form-label" for="apiUrlInput">API BASE URL</label>
+      <input class="form-input" id="apiUrlInput" type="url" placeholder="https://xxxx-xxxx.trycloudflare.com" />
+      <div class="form-hint">No trailing slash. E.g. <code>https://decrease-hearings-sussex-albany.trycloudflare.com</code></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" id="cancelSettingsBtn">Cancel</button>
+      <button class="btn-primary" id="saveSettingsBtn">Save &amp; Test Connection</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+const POLL_MS = 4000;
+let API_BASE = localStorage.getItem('devforge_api_url') || '';
+let currentJobId = null, pollTimer = null, elapsedTimer = null, elapsedSec = 0;
+const $ = id => document.getElementById(id);
+
+const STAGES = [
+  {id:'ceo',icon:'&#129489;&#8205;&#128188;',name:'CEO<br>Agent'},
+  {id:'analysis',icon:'&#128269;',name:'Analysis<br>Agent'},
+  {id:'pm',icon:'&#128203;',name:'PM<br>Agent'},
+  {id:'coding',icon:'&#9889;',name:'Coding<br>Agents'},
+  {id:'qa',icon:'&#129514;',name:'QA<br>Agent'},
+  {id:'integration',icon:'&#128279;',name:'Integration<br>Check'},
+];
+
+function buildPipeline() {
+  const track = $('pipelineTrack'); track.innerHTML = '';
+  STAGES.forEach((s,i) => {
+    const el = document.createElement('div');
+    el.className='stage'; el.id=`stage-${s.id}`;
+    el.innerHTML=`<div class="stage-bubble">${s.icon}</div><div class="stage-name">${s.name}</div>`;
+    track.appendChild(el);
+    if (i < STAGES.length-1) {
+      const c = document.createElement('div');
+      c.className='stage-connector'; c.id=`conn-${i}`; track.appendChild(c);
+    }
+  });
+}
+
+function setSubtitle(text) {
+  const el = $('pipelineSubtitle');
+  if (el) el.innerHTML = text;
+}
+
+function updatePipeline(status, result) {
+  STAGES.forEach(s => { const el = document.getElementById(`stage-${s.id}`); if(el) el.className='stage'; });
+  for (let i=0;i<STAGES.length-1;i++) { const c=document.getElementById(`conn-${i}`); if(c) c.className='stage-connector'; }
+  if (status==='pending') {
+    setSubtitle('&#8987; Initializing multi-agent graph...');
+    return;
+  }
+  let done = getDoneCount(result);
+  if (status==='running' && !result) {
+    if (elapsedSec < 38) done = 0;
+    else if (elapsedSec < 75) done = 1;
+    else if (elapsedSec < 220) done = 2;
+    else if (elapsedSec < 420) done = 3;
+    else if (elapsedSec < 500) done = 4;
+    else done = 5;
+  }
+  for (let i=0;i<done;i++) {
+    const el = document.getElementById(`stage-${STAGES[i].id}`);
+    if (el) el.className='stage done';
+    const c=document.getElementById(`conn-${i}`); if(c) c.className='stage-connector done';
+  }
+  if (status==='running' && done<STAGES.length) {
+    const el = document.getElementById(`stage-${STAGES[done].id}`);
+    if (el) el.className='stage active';
+    const hints = [
+      '&#129489;&#8205;&#128188; <strong>CEO Agent:</strong> Outlining project brief &amp; vision...',
+      '&#128269; <strong>Analysis Agent:</strong> Extracting requirements &amp; tech stack...',
+      '&#128203; <strong>PM Agent:</strong> Planning tasks, architecture &amp; API contracts...',
+      '&#9889; <strong>Coding Agents:</strong> Generating database, backend &amp; frontend in parallel...',
+      '&#129514; <strong>QA Agent:</strong> Validating code syntax, quality &amp; test coverage...',
+      '&#128279; <strong>Integration Agent:</strong> Assembling codebase &amp; verifying structure...'
+    ];
+    setSubtitle(hints[done] || 'Agents collaborating in real-time...');
+  }
+  if (status==='done') {
+    for (let i=0;i<STAGES.length;i++) {
+      const el = document.getElementById(`stage-${STAGES[i].id}`);
+      if (el) el.className='stage done';
+      if (i<STAGES.length-1) { const c=document.getElementById(`conn-${i}`); if(c) c.className='stage-connector done'; }
+    }
+    setSubtitle('&#9989; <strong>All agents finished!</strong> Full codebase generated successfully.');
+  }
+  if (status==='failed') {
+    const fi=Math.max(0,done);
+    const el = document.getElementById(`stage-${STAGES[fi].id}`);
+    if (el) el.className='stage failed';
+    setSubtitle('&#10060; Pipeline execution encountered an error.');
+  }
+}
+
+function getDoneCount(r) {
+  if (!r) return 0;
+  let n=0;
+  if(r.brief)n=1; if(r.requirements)n=2; if(r.tasks)n=3;
+  if(r.generated_code)n=4; if(r.qa_report)n=5; if(r.integration_report)n=6;
+  return n;
+}
+
+async function apiFetch(path, opts) {
+  const r = await fetch(API_BASE.replace(/\/$/,'')+path, {headers:{'Accept':'application/json'},...opts});
+  if (!r.ok) { const t=await r.text(); throw new Error(`${r.status}: ${t}`); }
+  return r.json();
+}
+const apiGet  = path => apiFetch(path);
+const apiPost = (path,body) => apiFetch(path,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(body)});
+
+async function checkApiStatus() {
+  if (!API_BASE) { $('apiStatusBadge').innerHTML='&#9881;&#65039; Not Configured'; $('apiStatusBadge').style.color='var(--amber)'; return false; }
+  try {
+    await apiGet('/health');
+    $('apiStatusBadge').innerHTML='<span class="api-dot"></span>API Connected'; $('apiStatusBadge').style.color='var(--green)'; return true;
+  } catch { $('apiStatusBadge').innerHTML='&#9888;&#65039; Unreachable'; $('apiStatusBadge').style.color='var(--amber)'; return false; }
+}
+
+async function handleGenerate() {
+  const prompt = $('promptInput').value.trim();
+  if (!prompt) { showToast('Please describe your project first.','error'); return; }
+  if (!API_BASE) { showToast('Configure the API URL first (&#9881;&#65039;)','error'); openSettings(); return; }
+  const ok = await checkApiStatus();
+  if (!ok) { showToast('Cannot reach the API. Check URL or tunnel.','error'); return; }
+  $('generateBtn').disabled=true;
+  const ico=$('btnIcon'); ico.style.animation='spin .8s linear infinite'; ico.style.display='inline-block'; ico.textContent='&#8987;';
+  try {
+    const data = await apiPost('/generate',{user_request:prompt});
+    startTracking(data.job_id);
+  } catch(e) {
+    showToast(`Error: ${e.message}`,'error');
+    $('generateBtn').disabled=false; ico.textContent='&#9889;'; ico.style.animation='';
+  }
+}
+
+function startTracking(jobId) {
+  currentJobId=jobId;
+  $('heroSection').style.display='none'; $('pipelineSection').style.display='block';
+  $('resultsSection').style.display='none'; $('newJobBtn').classList.add('visible');
+  buildPipeline(); $('jobIdLabel').textContent=jobId.slice(0,8)+'...';
+  updateStatusBadge('pending'); updatePipeline('pending',null);
+  elapsedSec=0; $('elapsedLabel').textContent='0s';
+  elapsedTimer=setInterval(()=>{
+    elapsedSec++;
+    $('elapsedLabel').textContent=elapsedSec<60?`${elapsedSec}s`:`${Math.floor(elapsedSec/60)}m ${elapsedSec%60}s`;
+    if ($('pipelineSection').style.display !== 'none' && $('resultsSection').style.display === 'none') {
+      updatePipeline('running', null);
+    }
+  },1000);
+  $('pollBar').style.display='block'; poll(jobId);
+}
+
+async function poll(jobId) {
+  try {
+    const s=await apiGet(`/status/${jobId}`); updateStatusBadge(s.status);
+    if (s.status==='pending'||s.status==='running') {
+      try { const p=await apiGet(`/result/${jobId}`); updatePipeline(s.status,p); } catch { updatePipeline(s.status,null); }
+      pollTimer=setTimeout(()=>poll(jobId),POLL_MS);
+    } else if (s.status==='done') {
+      clearInterval(elapsedTimer); $('pollBar').style.display='none';
+      const r=await apiGet(`/result/${jobId}`); updatePipeline('done',r); showResults(r); loadHistory();
+      showToast('&#127881; Project generated successfully!','success');
+    } else if (s.status==='failed') {
+      clearInterval(elapsedTimer); $('pollBar').style.display='none';
+      try { const r=await apiGet(`/result/${jobId}`); updatePipeline('failed',r); showError(r.error||'Pipeline failed.'); } catch { showError('Pipeline failed.'); }
+      showToast('Generation failed.','error');
+    }
+  } catch(e) { showToast(`Polling error: ${e.message}`,'error'); pollTimer=setTimeout(()=>poll(jobId),POLL_MS*2); }
+}
+
+function updateStatusBadge(status) {
+  const labels={pending:'&#8987; Pending',running:'&#9889; Running',done:'&#9989; Done',failed:'&#10060; Failed'};
+  $('statusBadge').className=`status-badge ${status}`; $('statusBadge').innerHTML=labels[status]||status;
+}
+
+function escHtml(s) { if(typeof s!=='string')s=String(s??''); return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function titleCase(s) { return s.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()); }
+
+function makeCard(title,bodyHtml) {
+  const d=document.createElement('div'); d.className='result-card';
+  d.innerHTML=`<div class="result-card-header" onclick="this.closest('.result-card').classList.toggle('collapsed')"><div class="result-card-title">${title}</div><span class="chevron">&#9660;</span></div><div class="result-card-body">${bodyHtml}</div>`;
+  return d;
+}
+
+function showResults(r) {
+  $('resultsSection').style.display='block'; $('resultGrid').innerHTML='';
+  if(r.brief) $('resultGrid').appendChild(makeCard('&#128221; Project Brief',`<div class="brief-text">${escHtml(r.brief)}</div>`));
+  if(r.requirements){
+    const req=r.requirements,items=[];
+    if(req.project_type)items.push(`Type: ${req.project_type}`);
+    if(Array.isArray(req.features))req.features.forEach(f=>items.push(f));
+    if(req.tech_stack)Object.entries(req.tech_stack).forEach(([k,v])=>{if(v)items.push(`${k}: ${Array.isArray(v)?v.join(', '):v}`);});
+    $('resultGrid').appendChild(makeCard('&#128269; Requirements &amp; Tech Stack',`<div class="chips">${items.map(i=>`<span class="chip">${escHtml(i)}</span>`).join('')}</div>`));
+  }
+  if(r.generated_code){
+    const code=r.generated_code,keys=Object.keys(code).filter(k=>code[k]);
+    if(keys.length){
+      const tabs=keys.map((k,i)=>`<button class="code-tab ${i===0?'active':''}" data-tab="${k}" onclick="switchTab(this)">${titleCase(k)}</button>`).join('');
+      const panels=keys.map((k,i)=>{const content=typeof code[k]==='string'?code[k]:JSON.stringify(code[k],null,2);return `<div class="code-panel ${i===0?'active':''}" data-panel="${k}"><div class="code-block"><button class="copy-btn" onclick="copyCode(this)">Copy</button><code>${escHtml(content)}</code></div></div>`;}).join('');
+      $('resultGrid').appendChild(makeCard('&#128187; Generated Code',`<div class="code-tabs">${tabs}</div>${panels}`));
+    }
+  }
+  if(r.qa_report){
+    let html='';
+    Object.entries(r.qa_report).forEach(([agent,rep])=>{
+      const pass=rep&&rep.passed!==false,body=typeof rep==='string'?rep:(rep?.feedback||JSON.stringify(rep));
+      html+=`<div style="margin-bottom:14px"><span class="chip ${pass?'tag-pass':'tag-fail'}">${pass?'&#9989;':'&#10060;'} ${titleCase(agent)}</span><div style="font-size:13px;color:var(--text-dim);line-height:1.6;margin-top:8px">${escHtml(body)}</div></div>`;
+    });
+    $('resultGrid').appendChild(makeCard('&#129514; QA Report',html||'<div style="color:var(--text-muted)">No QA data.</div>'));
+  }
+  if(r.integration_report){
+    const rep=typeof r.integration_report==='string'?r.integration_report:JSON.stringify(r.integration_report,null,2);
+    $('resultGrid').appendChild(makeCard('&#128279; Integration Report',`<div class="brief-text">${escHtml(rep)}</div>`));
+  }
+  if(r.files_written&&r.files_written.length){
+    const files=r.files_written.map(f=>`<div class="file-item"><span class="file-icon">&#128196;</span>${escHtml(f)}</div>`).join('');
+    $('resultGrid').appendChild(makeCard(`&#128193; Files Written (${r.files_written.length})`,`<div style="margin-bottom:10px;font-size:12px;color:var(--text-muted)">Saved to: <code style="color:var(--cyan)">${escHtml(r.output_folder||'&mdash;')}</code></div><div class="files-list">${files}</div>`));
+  }
+  $('resultsSection').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function showError(msg) { $('resultsSection').style.display='block'; $('resultGrid').innerHTML=`<div class="error-box"><strong>&#10060; Generation Failed</strong><br><br>${escHtml(msg)}</div>`; }
+
+function switchTab(btn) {
+  const body=btn.closest('.result-card-body');
+  body.querySelectorAll('.code-tab').forEach(t=>t.classList.remove('active'));
+  body.querySelectorAll('.code-panel').forEach(p=>p.classList.remove('active'));
+  btn.classList.add('active'); body.querySelector(`[data-panel="${btn.dataset.tab}"]`)?.classList.add('active');
+}
+async function copyCode(btn) { try{await navigator.clipboard.writeText(btn.nextElementSibling.textContent);}catch{} btn.textContent='Copied!'; setTimeout(()=>btn.textContent='Copy',2000); }
+
+async function loadHistory() {
+  if(!API_BASE) return;
+  try {
+    const jobs=await apiGet('/jobs'); if(!jobs.length) return;
+    $('historySection').style.display='block';
+    $('historyBody').innerHTML=jobs.reverse().slice(0,20).map(j=>`<tr>
+      <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(j.user_request)}">${escHtml(j.user_request.slice(0,80))}${j.user_request.length>80?'...':''}</td>
+      <td><span class="status-badge ${j.status}">${j.status}</span></td>
+      <td style="color:var(--text-muted);font-family:var(--mono);font-size:12px">${new Date(j.created_at).toLocaleTimeString()}</td>
+      <td>${j.status==='done'?`<a class="view-link" onclick="viewJob('${j.job_id}')">View</a>`:''}</td>
+    </tr>`).join('');
+  } catch {}
+}
+
+async function viewJob(jobId) {
+  currentJobId=jobId; $('heroSection').style.display='none'; $('pipelineSection').style.display='none';
+  $('newJobBtn').classList.add('visible');
+  try { const r=await apiGet(`/result/${jobId}`); $('resultsSection').style.display='block'; showResults(r); }
+  catch { showToast('Could not load job.','error'); }
+}
+
+function openSettings() { $('apiUrlInput').value=API_BASE; $('settingsModal').classList.add('open'); }
+
+async function saveSettings() {
+  const url=$('apiUrlInput').value.trim().replace(/\/$/,'');
+  if(!url){showToast('Please enter a valid URL.','error');return;}
+  API_BASE=url; localStorage.setItem('devforge_api_url',API_BASE); $('settingsModal').classList.remove('open');
+  const ok=await checkApiStatus();
+  if(ok){showToast('&#9989; API connected!','success'); loadHistory();} else showToast('&#9888;&#65039; Saved but API unreachable.','error');
+}
+
+function resetToHome() {
+  clearTimeout(pollTimer); clearInterval(elapsedTimer); currentJobId=null;
+  $('heroSection').style.display='block'; $('pipelineSection').style.display='none';
+  $('resultsSection').style.display='none'; $('newJobBtn').classList.remove('visible');
+  $('generateBtn').disabled=false; $('btnIcon').textContent='&#9889;'; $('btnIcon').style.animation='';
+  $('promptInput').value=''; $('charCount').textContent='0';
+}
+
+function showToast(msg,type='info') {
+  const t=document.createElement('div'); t.className=`toast ${type}`; t.innerHTML=msg;
+  $('toastContainer').appendChild(t); setTimeout(()=>t.remove(),4000);
+}
+
+$('promptInput').addEventListener('input',()=>$('charCount').textContent=$('promptInput').value.length);
+$('promptInput').addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='Enter')handleGenerate();});
+$('generateBtn').addEventListener('click',handleGenerate);
+$('newJobBtn').addEventListener('click',resetToHome);
+$('settingsBtn').addEventListener('click',openSettings);
+$('saveSettingsBtn').addEventListener('click',saveSettings);
+$('cancelSettingsBtn').addEventListener('click',()=>$('settingsModal').classList.remove('open'));
+$('settingsModal').addEventListener('click',e=>{if(e.target===$('settingsModal'))$('settingsModal').classList.remove('open');});
+
+(function(){
+  const canvas=$('bgCanvas'),ctx=canvas.getContext('2d');let W,H,particles;
+  function resize(){W=canvas.width=innerWidth;H=canvas.height=innerHeight;}
+  function rp(){return{x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.5+.3,vx:(Math.random()-.5)*.25,vy:(Math.random()-.5)*.25,alpha:Math.random()*.5+.1,hue:Math.random()>.5?265:190};}
+  function init(){resize();particles=Array.from({length:80},rp);}
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    particles.forEach(p=>{
+      p.x+=p.vx;p.y+=p.vy;
+      if(p.x<0)p.x=W;if(p.x>W)p.x=0;if(p.y<0)p.y=H;if(p.y>H)p.y=0;
+      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle=`hsla(${p.hue},70%,65%,${p.alpha})`;ctx.fill();
+    });requestAnimationFrame(draw);
+  }
+  window.addEventListener('resize',resize);init();draw();
+})();
+
+(async function(){
+  if(API_BASE){await checkApiStatus();loadHistory();}
+  else{$('apiStatusBadge').innerHTML='&#9881;&#65039; Not Configured';$('apiStatusBadge').style.color='var(--amber)';setTimeout(openSettings,500);}
+})();
+</script>
+</body>
+</html>
